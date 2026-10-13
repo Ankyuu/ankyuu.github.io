@@ -1,0 +1,153 @@
+import { router } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, RefreshControl, useWindowDimensions, View } from 'react-native';
+
+import { ItemTile } from '@/components/item-tile';
+import { ThemedText } from '@/components/themed-text';
+import { Button, Card, Chip, rowStyles, Screen, SectionTitle } from '@/components/ui';
+import { CLASS_NAMES } from '@/constants/destiny';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { ARMOR_BUCKETS, MANIFEST_READY, WEAPON_BUCKETS } from '@/data/manifest';
+import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '@/lib/auth';
+import { clearInventory, useInventory, type InventoryItem } from '@/lib/inventory';
+
+const COLUMNS = 5;
+const GAP = 8;
+
+export default function InventoryScreen() {
+  const theme = useTheme();
+  const { session, signOut } = useAuth();
+  const { inventory, loading, error, refresh } = useInventory(session);
+  const [owner, setOwner] = useState<string>('');
+  const [category, setCategory] = useState<'weapons' | 'armor'>('weapons');
+  const [vaultClass, setVaultClass] = useState<number | 'all'>('all');
+  const { width } = useWindowDimensions();
+  const tileSize = Math.floor((Math.min(width, MaxContentWidth) - Spacing.three * 2 - GAP * (COLUMNS - 1)) / COLUMNS);
+
+  const logout = () => {
+    clearInventory();
+    signOut();
+  };
+
+  const header = (
+    <Pressable onPress={logout} hitSlop={8}>
+      <ThemedText type="small" themeColor="textSecondary">
+        Déconnexion
+      </ThemedText>
+    </Pressable>
+  );
+
+  if (!MANIFEST_READY) {
+    return (
+      <Screen title="Inventaire" action={header}>
+        <Card>
+          <ThemedText type="small">
+            Les définitions du jeu ne sont pas encore téléchargées. Lance dans le terminal :{'\n'}
+            node --env-file=.env.local scripts/fetch-manifest.mjs
+          </ThemedText>
+        </Card>
+      </Screen>
+    );
+  }
+
+  if (!inventory) {
+    return (
+      <Screen title="Inventaire" subtitle={session ? `Connecté en tant que ${session.name}` : undefined} action={header}>
+        {error ? (
+          <Card>
+            <ThemedText type="small" style={{ color: '#E5735C' }}>
+              {error}
+            </ThemedText>
+            <Button label="Réessayer" onPress={refresh} />
+          </Card>
+        ) : (
+          <ActivityIndicator color={theme.accent} style={{ marginTop: Spacing.five }} />
+        )}
+      </Screen>
+    );
+  }
+
+  const selectedOwner = owner || inventory.characters[0]?.id || 'vault';
+  const isVault = selectedOwner === 'vault';
+  const vaultCount = inventory.items.filter((i) => i.owner === 'vault').length;
+  const buckets = category === 'weapons' ? WEAPON_BUCKETS : ARMOR_BUCKETS;
+
+  const itemsFor = (bucket: number): InventoryItem[] =>
+    inventory.items
+      .filter((i) => i.owner === selectedOwner && i.def.b === bucket)
+      .filter((i) => !isVault || category === 'weapons' || vaultClass === 'all' || i.def.c === vaultClass)
+      .sort((a, b) => Number(b.equipped) - Number(a.equipped) || b.def.t - a.def.t || b.power - a.power);
+
+  const open = (item: InventoryItem) => router.push({ pathname: '/item/[id]', params: { id: item.instanceId } });
+
+  return (
+    <Screen
+      title="Inventaire"
+      subtitle={session ? `Connecté en tant que ${session.name}` : undefined}
+      action={header}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={theme.accent} />}>
+      {error ? (
+        <ThemedText type="small" style={{ color: '#E5735C' }}>
+          {error}
+        </ThemedText>
+      ) : null}
+
+      <View style={rowStyles.wrap}>
+        {inventory.characters.map((c) => (
+          <Chip
+            key={c.id}
+            label={`${CLASS_NAMES[c.classType] ?? '?'} ✦${c.light}`}
+            selected={selectedOwner === c.id}
+            onPress={() => setOwner(c.id)}
+          />
+        ))}
+        <Chip label={`Coffre (${vaultCount})`} selected={isVault} onPress={() => setOwner('vault')} />
+      </View>
+
+      <View style={rowStyles.wrap}>
+        <Chip label="Armes" selected={category === 'weapons'} onPress={() => setCategory('weapons')} />
+        <Chip label="Armures" selected={category === 'armor'} onPress={() => setCategory('armor')} />
+      </View>
+
+      {isVault && category === 'armor' ? (
+        <View style={rowStyles.wrap}>
+          {(['all', 0, 1, 2] as const).map((c) => (
+            <Chip
+              key={c}
+              label={c === 'all' ? 'Toutes classes' : CLASS_NAMES[c]}
+              selected={vaultClass === c}
+              onPress={() => setVaultClass(c)}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {buckets.map((bucket) => {
+        const items = itemsFor(bucket.hash);
+        return (
+          <View key={bucket.hash} style={{ gap: Spacing.two }}>
+            <SectionTitle>
+              {bucket.label} ({items.length})
+            </SectionTitle>
+            {items.length === 0 ? (
+              <ThemedText type="small" themeColor="textSecondary">
+                Rien ici.
+              </ThemedText>
+            ) : (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GAP }}>
+                {items.map((item) => (
+                  <ItemTile key={item.instanceId} item={item} size={tileSize} onPress={() => open(item)} />
+                ))}
+              </View>
+            )}
+          </View>
+        );
+      })}
+
+      <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
+        Tire vers le bas pour actualiser. Bordure dorée : objet équipé.
+      </ThemedText>
+    </Screen>
+  );
+}
