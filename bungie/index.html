@@ -17,7 +17,10 @@
     let target = '';
     try { target = JSON.parse(atob(state)).r || ''; } catch (e) {}
     // Retours autorisés : Expo Go, l'app installée, ou la version web sur GitHub Pages
-    const allowed = /^(exp|exps|ankyuu):\/\//.test(target) || target.startsWith('https://ankyuu.github.io/app/');
+    const allowed =
+      /^(exp|exps|ankyuu):\/\//.test(target) ||
+      target.startsWith('https://ankyuu.github.io/app/') ||
+      /^http:\/\/localhost:\d+\//.test(target); // version web en développement sur ton PC
     if (code && allowed) {
       const sep = target.includes('?') ? '&' : '?';
       location.replace(target + sep + 'code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
