@@ -9,16 +9,20 @@
 <body>
   <p id="msg">Retour vers l'application…</p>
   <script>
+    // Bungie renvoie ici après la connexion. On renvoie vers l'app
+    // dont l'adresse est cachée dans le paramètre « state ».
     const params = new URLSearchParams(location.search);
     const state = params.get('state') || '';
     const code = params.get('code') || '';
     let target = '';
     try { target = JSON.parse(atob(state)).r || ''; } catch (e) {}
-    if (code && /^(exp|exps|ankyuu):\/\//.test(target)) {
+    // Retours autorisés : Expo Go, l'app installée, ou la version web sur GitHub Pages
+    const allowed = /^(exp|exps|ankyuu):\/\//.test(target) || target.startsWith('https://ankyuu.github.io/app/');
+    if (code && allowed) {
       const sep = target.includes('?') ? '&' : '?';
       location.replace(target + sep + 'code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state));
     } else {
-      document.getElementById('msg').textContent = 'Lien de connexion invalide. Retourne dans l\u2019app et réessaie.';
+      document.getElementById('msg').textContent = 'Lien de connexion invalide. Retourne dans l’app et réessaie.';
     }
   </script>
 </body>
